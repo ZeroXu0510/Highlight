@@ -6,7 +6,7 @@ package zhy.com.highlight.interfaces;
  * Copyright (c) 2016 isanwenyu@163.com. All rights reserved.
  * </pre>
  */
-public interface HighLightInterface{
+public interface HighLightInterface {
 
     /**
      * 移除
@@ -38,6 +38,14 @@ public interface HighLightInterface{
     public static interface OnRemoveCallback
     {
         void onRemove();
+    }
+
+    /**
+     * 高亮区被点击.
+     */
+    public interface onHighLightClickCallback{
+
+        void onHighLightClick();
     }
 
 }

@@ -11,6 +11,7 @@ import android.view.LayoutInflater;
 import android.view.View;
 import android.widget.FrameLayout;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import zhy.com.highlight.HighLight;
@@ -20,6 +21,7 @@ import zhy.com.highlight.HighLight;
  */
 public class HightLightView extends FrameLayout
 {
+    private Context mContext;
     private static final int DEFAULT_WIDTH_BLUR = 15;
     private static final int DEFAULT_RADIUS = 6;
     private static final PorterDuffXfermode MODE_DST_OUT = new PorterDuffXfermode(PorterDuff.Mode.DST_OUT);
@@ -28,8 +30,11 @@ public class HightLightView extends FrameLayout
     private Bitmap mLightBitmap;
     private Paint mPaint;
     private List<HighLight.ViewPosInfo> mViewRects;
+    private List<View> mTips;
     private HighLight mHighLight;
     private LayoutInflater mInflater;
+
+    private OnClickListener highLightClickCallback;
 
     //some config
 //    private boolean isBlur = true;
@@ -40,12 +45,14 @@ public class HightLightView extends FrameLayout
     private int mPosition=-1;//当前显示的提示布局位置
     private HighLight.ViewPosInfo mViewPosInfo;//当前显示的高亮布局位置信息
 
-    public HightLightView(Context context, HighLight highLight, int maskColor, List<HighLight.ViewPosInfo> viewRects,boolean isNext)
+    public HightLightView(Context context, HighLight highLight, int maskColor, List<HighLight.ViewPosInfo> viewRects, boolean isNext)
     {
         super(context);
+        mContext = context;
         mHighLight = highLight;
         mInflater = LayoutInflater.from(context);
         mViewRects = viewRects;
+        mTips = new ArrayList<>();
         this.maskColor = maskColor;
 //        this.isBlur = isBlur;
         this.isNext=isNext;
@@ -92,6 +99,7 @@ public class HightLightView extends FrameLayout
             addViewForEveryTip(mViewPosInfo);
         } else
         {
+
             for (HighLight.ViewPosInfo viewPosInfo : mViewRects)
             {
                 addViewForEveryTip(viewPosInfo);
@@ -105,6 +113,7 @@ public class HightLightView extends FrameLayout
      */
     private void removeAllTips() {
         removeAllViews();
+        mTips.clear();
     }
 
     /**
@@ -141,6 +150,7 @@ public class HightLightView extends FrameLayout
         }else {
             lp.gravity |= Gravity.TOP;
         }
+        mTips.add(view);
         addView(view, lp);
     }
 
@@ -162,6 +172,7 @@ public class HightLightView extends FrameLayout
         mHighLight.updateInfo();
         mLightBitmap = Bitmap.createBitmap(getMeasuredWidth(), getMeasuredHeight(), Bitmap.Config.ARGB_8888);
 
+
         if(isNext)//如果是next模式添加每个提示布局的背景形状
         {
             //添加当前提示布局的高亮形状背景
@@ -176,6 +187,10 @@ public class HightLightView extends FrameLayout
         canvas.drawBitmap(mLightBitmap,0,0,mPaint);
     }
 
+    public void setHighLightClickCallback(OnClickListener clickCallback){
+        highLightClickCallback = clickCallback;
+    }
+
     /**
      * 添加提示布局的背景形状
      * @param viewPosInfo //提示布局的位置信息
@@ -184,6 +199,17 @@ public class HightLightView extends FrameLayout
     private void addViewEveryTipShape(HighLight.ViewPosInfo viewPosInfo)
     {
         viewPosInfo.lightShape.shape(mLightBitmap,viewPosInfo);
+        View v = new View(mContext);
+        if (highLightClickCallback != null)
+            v.setOnClickListener(highLightClickCallback);
+        addView(v);
+        LayoutParams lp = new LayoutParams((int)viewPosInfo.rectF.width(), (int)viewPosInfo.rectF.height());
+        lp.setMargins((int)viewPosInfo.rectF.left, (int)viewPosInfo.rectF.top, 0, 0);
+        v.setLayoutParams(lp);
+//        RectF rectF = viewPosInfo.rectF;
+//        v.layout((int)rectF.left, (int)rectF.top, (int)rectF.right, (int)rectF.bottom);
+
+
     }
 
     @Override
@@ -215,17 +241,15 @@ public class HightLightView extends FrameLayout
     {
         if (isNext)//如果是next模式 只有一个子控件 刷新当前位置tip
         {
-            View view = getChildAt(0);
+            View view = mTips.get(0);
 
             LayoutParams lp = buildTipLayoutParams(view, mViewPosInfo);
             if (lp == null) return;
             view.setLayoutParams(lp);
 
-        }else
-        {
-            for (int i = 0, n = getChildCount(); i < n; i++)
-            {
-                View view = getChildAt(i);
+        }else{
+            for (int i = 0; i < mTips.size(); i++){
+                View view = mTips.get(i);
                 HighLight.ViewPosInfo viewPosInfo = mViewRects.get(i);
 
                 LayoutParams lp = buildTipLayoutParams(view, viewPosInfo);

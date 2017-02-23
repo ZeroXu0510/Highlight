@@ -8,6 +8,7 @@ import android.os.Handler;
 import android.os.Message;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.ViewTreeObserver;
 import android.widget.FrameLayout;
 import android.widget.RelativeLayout;
 
@@ -65,14 +66,17 @@ public class HighLight implements HighLightInterface
     private boolean autoRemove = true;//点击是否自动移除 默认为true
     private boolean next = false;//next模式标志 默认为false
     private boolean mShowing;//是否显示
+    private boolean isPreShow;//是否准备显示.
     private Message mShowMessage;
     private Message mRemoveMessage;
     private Message mClickMessage;
+    private Message mHighLightClickMessage;
     private ListenersHandler mListenersHandler;
 
     private static final int CLICK = 0x40;
     private static final int REMOVE = 0x41;
     private static final int SHOW = 0x42;
+    private static final int HIGHCLICK = 0x43;
 
     public HighLight(Context context)
     {
@@ -107,7 +111,7 @@ public class HighLight implements HighLightInterface
     }
 
 
-    public HighLight addHighLight(int viewId, int decorLayoutId, OnPosCallback onPosCallback,LightShape lightShape)
+    public HighLight addHighLight(int viewId, int decorLayoutId, OnPosCallback onPosCallback, LightShape lightShape)
     {
         ViewGroup parent = (ViewGroup) mAnchor;
         View view = parent.findViewById(viewId);
@@ -132,29 +136,51 @@ public class HighLight implements HighLightInterface
     }
 
 
-    public HighLight addHighLight(View view, int decorLayoutId, OnPosCallback onPosCallback,LightShape lightShape)
+    public synchronized HighLight addHighLight(final View view, final int decorLayoutId, final OnPosCallback onPosCallback, final LightShape lightShape)
     {
         if (onPosCallback == null && decorLayoutId != -1)
         {
             throw new IllegalArgumentException("onPosCallback can not be null.");
         }
         ViewGroup parent = (ViewGroup) mAnchor;
-        RectF rect = new RectF(ViewUtils.getLocationInView(parent, view));
+
         //if RectF is empty return  added by isanwenyu 2016/10/26.
-        if(rect.isEmpty()) return this;
-        ViewPosInfo viewPosInfo = new ViewPosInfo();
-        viewPosInfo.layoutId = decorLayoutId;
-        viewPosInfo.rectF = rect;
-        viewPosInfo.view = view;
-        MarginInfo marginInfo = new MarginInfo();
-        onPosCallback.getPos(parent.getWidth() - rect.right, parent.getHeight() - rect.bottom, rect, marginInfo);
-        viewPosInfo.marginInfo = marginInfo;
-        viewPosInfo.onPosCallback = onPosCallback;
-        viewPosInfo.lightShape = lightShape == null?new RectLightShape():lightShape;
-        mViewRects.add(viewPosInfo);
+//        if(rect.isEmpty()) return this;
+        if(view.getWidth() == 0) {
+            view.getViewTreeObserver().addOnPreDrawListener(new ViewTreeObserver.OnPreDrawListener() {
+                @Override
+                public boolean onPreDraw() {
+                    if (view.getWidth()!=0){
+                        System.out.println("!!! get width,add posInfo, show. "+ view.getWidth());
+                        view.getViewTreeObserver().removeOnPreDrawListener(this);
+                        addHighLight(view, decorLayoutId, onPosCallback, lightShape);
+                        if (isPreShow) show();
+                    }
+
+                    return false;
+                }
+            });
+            System.out.println("!!! mViewRects.size in add when rect is empty."+mViewRects.size());
+        }else {
+            RectF rect = new RectF(ViewUtils.getLocationInView(parent, view));
+            ViewPosInfo viewPosInfo = new ViewPosInfo();
+            viewPosInfo.layoutId = decorLayoutId;
+            viewPosInfo.rectF = rect;
+            viewPosInfo.view = view;
+            MarginInfo marginInfo = new MarginInfo();
+            onPosCallback.getPos(parent.getWidth() - rect.right, parent.getHeight() - rect.bottom, rect, marginInfo);
+            viewPosInfo.marginInfo = marginInfo;
+            viewPosInfo.onPosCallback = onPosCallback;
+            viewPosInfo.lightShape = lightShape == null?new RectLightShape():lightShape;
+            mViewRects.add(viewPosInfo);
+        }
+
+        System.out.println("!!! mViewRects.size in add."+mViewRects.size());
 
         return this;
     }
+
+
 
     // 一个场景可能有多个步骤的高亮。一个步骤完成之后再进行下一个步骤的高亮
     // 添加点击事件，将每次点击传给应用逻辑
@@ -180,6 +206,15 @@ public class HighLight implements HighLightInterface
             mRemoveMessage = mListenersHandler.obtainMessage(REMOVE, onRemoveCallback);
         } else {
             mRemoveMessage = null;
+        }
+        return this;
+    }
+
+    public HighLight setHighLightCallback(HighLightInterface.onHighLightClickCallback onHighLightClickCallback){
+        if (onHighLightClickCallback != null){
+            mHighLightClickMessage = mListenersHandler.obtainMessage(HIGHCLICK, onHighLightClickCallback);
+        }else {
+            mHighLightClickMessage = null;
         }
         return this;
     }
@@ -256,60 +291,91 @@ public class HighLight implements HighLightInterface
     }
 
     @Override
-    public void show()
-    {
-
-        if (isShowing()&&getHightLightView() != null)
-        {
+    public synchronized void show(){
+        isPreShow = true;
+        if (isShowing()&&getHightLightView() != null){
             mHightLightView= getHightLightView();
             return;
-        }else
-        {   //如果View rect 容器为空 直接返回 added by isanwenyu 2016/10/26.
+        }else{
+            //如果View rect 容器为空 直接返回 added by isanwenyu 2016/10/26.
+            System.out.println("!!! check "+ mViewRects.isEmpty());
             if(mViewRects.isEmpty()) return;
-            HightLightView hightLightView = new HightLightView(mContext, this, maskColor, mViewRects,next);
-            //add high light view unique id by isanwenyu@163.com  on 2016/9/28.
-            hightLightView.setId(R.id.high_light_view);
-            //compatible with AutoFrameLayout ect.
-            if (mAnchor instanceof FrameLayout) {
-                ViewGroup.LayoutParams lp = new ViewGroup.LayoutParams
-                        (ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
-                ((ViewGroup) mAnchor).addView(hightLightView, ((ViewGroup) mAnchor).getChildCount(), lp);
-
-            } else
-            {
-                FrameLayout frameLayout = new FrameLayout(mContext);
-                ViewGroup parent = (ViewGroup) mAnchor.getParent();
-                parent.removeView(mAnchor);
-                parent.addView(frameLayout, mAnchor.getLayoutParams());
-                ViewGroup.LayoutParams lp = new ViewGroup.LayoutParams
-                        (ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
-                frameLayout.addView(mAnchor, lp);
-
-                frameLayout.addView(hightLightView);
+            for (ViewPosInfo posInfo : mViewRects) {
+                final View view = posInfo.view;
+                System.out.println("!!! posInfo.view.getWidth() "+ posInfo.view.getWidth());
+                if (view.getWidth() == 0){
+                    view.getViewTreeObserver().addOnPreDrawListener(new ViewTreeObserver.OnPreDrawListener() {
+                        @Override
+                        public boolean onPreDraw() {
+                            if (view.getWidth() != 0){
+                                view.getViewTreeObserver().removeOnPreDrawListener(this);
+                                show();
+                            }
+                            return false;
+                        }
+                    });
+                    return;
+                }
             }
-
-            if (intercept)
-            {
-                hightLightView.setOnClickListener(new View.OnClickListener()
-                {
-                    @Override
-                    public void onClick(View v)
-                    {
-                        //added autoRemove by isanwenyu@163.com
-                        if (autoRemove)  remove();
-
-                        sendClickMessage();
-                    }
-                });
-                //如果拦截才响应显示回调
-                sendShowMessage();
-            }
-
-            mHightLightView = hightLightView;
-            mShowing = true;
+            System.out.println("!!! mViewRects.size in show "+mViewRects.size());
+            showToView();
 
         }
     }
+
+    /**
+     * 真正的显示.
+     */
+    private void showToView(){
+        HightLightView hightLightView = new HightLightView(mContext, this, maskColor, mViewRects,next);
+        //add high light view unique id by isanwenyu@163.com  on 2016/9/28.
+        hightLightView.setId(R.id.high_light_view);
+        //compatible with AutoFrameLayout ect.
+        if (mAnchor instanceof FrameLayout) {
+            ViewGroup.LayoutParams lp = new ViewGroup.LayoutParams
+                    (ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
+            ((ViewGroup) mAnchor).addView(hightLightView, ((ViewGroup) mAnchor).getChildCount(), lp);
+
+        } else
+        {
+            FrameLayout frameLayout = new FrameLayout(mContext);
+            ViewGroup parent = (ViewGroup) mAnchor.getParent();
+            parent.removeView(mAnchor);
+            parent.addView(frameLayout, mAnchor.getLayoutParams());
+            ViewGroup.LayoutParams lp = new ViewGroup.LayoutParams
+                    (ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
+            frameLayout.addView(mAnchor, lp);
+
+            frameLayout.addView(hightLightView);
+        }
+
+        if (intercept)
+        {
+            hightLightView.setOnClickListener(new View.OnClickListener()
+            {
+                @Override
+                public void onClick(View v)
+                {
+                    //added autoRemove by isanwenyu@163.com
+                    if (autoRemove)  remove();
+
+                    sendClickMessage();
+                }
+            });
+            //如果拦截才响应显示回调
+            sendShowMessage();
+            hightLightView.setHighLightClickCallback(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    sendHighLightClickMessage();
+                }
+            });
+        }
+        mHightLightView = hightLightView;
+        mShowing = true;
+    }
+
+
     @Override
     public void remove()
     {
@@ -355,9 +421,15 @@ public class HighLight implements HighLightInterface
         }
     }
 
-    /**
-     * @see android.app.Dialog.ListenersHandler
-     */
+    private void sendHighLightClickMessage(){
+        if (mHighLightClickMessage != null){
+            Message.obtain(mHighLightClickMessage).sendToTarget();
+        }
+    }
+
+//    /**
+//     * @see android.app.Dialog.ListenersHandler
+//     */
     private static final class ListenersHandler extends Handler {
 
         @Override
@@ -371,6 +443,9 @@ public class HighLight implements HighLightInterface
                     break;
                 case SHOW:
                     ((HighLightInterface.OnShowCallback) msg.obj).onShow();
+                    break;
+                case HIGHCLICK:
+                    ((HighLightInterface.onHighLightClickCallback) msg.obj).onHighLightClick();
                     break;
             }
         }

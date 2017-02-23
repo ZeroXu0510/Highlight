@@ -13,13 +13,37 @@ import zhy.com.highlight.HighLight;
  * Edited by isanwenyu@163.com 16/10/26.
  */
 public class CircleLightShape extends BaseLightShape {
+    private boolean blur = true;
+
+    public CircleLightShape() {
+    }
+
+    public CircleLightShape(float padding) {
+        super(padding, padding);
+    }
+
+    public CircleLightShape(boolean blur) {
+        this.blur = blur;
+    }
+
+    public CircleLightShape(float padding, boolean blur) {
+        super(padding, padding);
+        this.blur = blur;
+    }
+
+    public CircleLightShape(float dx, float dy, boolean blur) {
+        super(dx, dy);
+        this.blur = blur;
+    }
+
     @Override
     protected void drawShape(Bitmap bitmap, HighLight.ViewPosInfo viewPosInfo) {
         Canvas canvas = new Canvas(bitmap);
         Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
         paint.setDither(true);
         paint.setAntiAlias(true);
-        paint.setMaskFilter(new BlurMaskFilter(15, BlurMaskFilter.Blur.SOLID));
+        if (blur)
+            paint.setMaskFilter(new BlurMaskFilter(15, BlurMaskFilter.Blur.SOLID));
         RectF rectF = viewPosInfo.rectF;
         canvas.drawCircle(rectF.left+(rectF.width()/2),rectF.top+(rectF.height()/2),
                 Math.max(rectF.width(),rectF.height())/2,paint);
